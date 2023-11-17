@@ -28,3 +28,37 @@ dyn_jerk = np.array([[1, dt, dt ** 2 / 2], [0, 1, dt], [0, 0, 1]])
 z_comp = np.array([1, 0, h_com / g])
 next_x = lambda x, x_jerk : dyn_mat @ x + x_jerk * dyn_jerk
 compute_z = lambda x : np.sum(z_comp * x)
+
+# constraints/bounds
+z_max = max_constraint * np.ones(int(T / dt))
+z_min = min_constraint * np.ones(int(T / dt))
+z_max[int(start_time / dt) : int(start_time / dt + short_period)] = max_min_constraint
+z_max[
+    int(start_time / dt + short_period + period) :
+    int(start_time / dt + 2 * short_period + period)
+] = max_min_constraint
+z_max[
+    int(start_time / dt + 2 * short_period + 2 * period) :
+    int(start_time // dt + 3 * short_period + 2 * period)
+] = max_min_constraint
+
+z_min[
+    int(start_time // dt + short_period + diff_period) :
+    int(start_time // dt + 2 * short_period + diff_period)
+] = min_max_constraint
+z_min[
+    int(start_time // dt + 2 * short_period + period + diff_period) :
+    int(start_time // dt + 3 * short_period + period + diff_period)
+] = min_max_constraint
+z_min[
+    int(start_time // dt + 3 * short_period + 2 * period + diff_period) :
+    int(start_time // dt + 4 * short_period + 2 * period + diff_period)
+] = min_max_constraint
+
+z_ref = (z_max + z_min) / 2
+
+
+# plt.plot(np.arange(0, T, dt), z_max, color='red', linestyle="dashed")
+# plt.plot(np.arange(0, T, dt), z_min, color='blue', linestyle="dashed")
+# plt.plot(np.arange(0, T, dt), z_ref, color='green', linestyle="dashed")
+# plt.show()

@@ -62,3 +62,33 @@ z_ref = (z_max + z_min) / 2
 # plt.plot(np.arange(0, T, dt), z_min, color='blue', linestyle="dashed")
 # plt.plot(np.arange(0, T, dt), z_ref, color='green', linestyle="dashed")
 # plt.show()
+
+# analytical solution
+P_x = np.ones((N, 3))
+P_x[:, 1] *= np.array([dt * i for i in range(1, N + 1)])
+P_x[:, 2] *= np.array([dt ** 2 * i ** 2 / 2 - h_com / g for i in range(1, N + 1)])
+
+P_u = scipy.linalg.toeplitz(
+    np.array(
+        [(1 + 3 * i + 3 * i ** 2) * dt ** 3 / 6 - dt * h_com / g for i in range(N)]
+    ),
+    np.zeros(N),
+)
+
+x_k = x_0
+z_cop = []
+for k in range(int(T / dt)):
+    x_jerk = -np.matmul(
+        np.linalg.inv(P_u.transpose() @ P_u + R / Q * np.ones((N, N))),
+        P_u.transpose() @ (P_x @ x_k - z_ref[k]),
+    )
+    x_k = next_x(x_k, x_jerk[0])
+    z_cop.append(compute_z(x_k))
+
+# plotting
+plt.plot(np.arange(0, T, dt), z_max, color='red', linestyle="dashed")
+plt.plot(np.arange(0, T, dt), z_min, color='blue', linestyle="dashed")
+plt.plot(np.arange(0, T, dt), z_ref, color='green', linestyle="dashed")
+plt.plot(np.arange(0, T, dt), np.array(z_cop), color='black')
+# plt.ylim(-0.2, 0.2)
+plt.show()

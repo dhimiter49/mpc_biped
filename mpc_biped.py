@@ -39,20 +39,20 @@ z_max[
 ] = max_min_constraint
 z_max[
     int(start_time / dt + 2 * short_period + 2 * period) :
-    int(start_time // dt + 3 * short_period + 2 * period)
+    int(start_time / dt + 3 * short_period + 2 * period)
 ] = max_min_constraint
 
 z_min[
-    int(start_time // dt + short_period + diff_period) :
-    int(start_time // dt + 2 * short_period + diff_period)
+    int(start_time / dt + short_period + diff_period) :
+    int(start_time / dt + 2 * short_period + diff_period)
 ] = min_max_constraint
 z_min[
-    int(start_time // dt + 2 * short_period + period + diff_period) :
-    int(start_time // dt + 3 * short_period + period + diff_period)
+    int(start_time / dt + 2 * short_period + period + diff_period) :
+    int(start_time / dt + 3 * short_period + period + diff_period)
 ] = min_max_constraint
 z_min[
-    int(start_time // dt + 3 * short_period + 2 * period + diff_period) :
-    int(start_time // dt + 4 * short_period + 2 * period + diff_period)
+    int(start_time / dt + 3 * short_period + 2 * period + diff_period) :
+    int(start_time / dt + 4 * short_period + 2 * period + diff_period)
 ] = min_max_constraint
 
 z_ref = (z_max + z_min) / 2

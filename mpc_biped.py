@@ -56,6 +56,7 @@ z_min[
 ] = min_max_constraint
 
 z_ref = (z_max + z_min) / 2
+z_ref = np.concatenate((z_ref, (min_constraint + max_constraint) / 2 * np.ones(N)))
 
 
 # plt.plot(np.arange(0, T, dt), z_max, color='red', linestyle="dashed")
@@ -80,7 +81,7 @@ z_cop = []
 for k in range(int(T / dt)):
     x_jerk = -np.matmul(
         np.linalg.inv(P_u.transpose() @ P_u + R / Q * np.ones((N, N))),
-        P_u.transpose() @ (P_x @ x_k - z_ref[k]),
+        P_u.transpose() @ (P_x @ x_k - z_ref[k : k + N]),
     )
     x_k = next_x(x_k, x_jerk[0])
     z_cop.append(compute_z(x_k))
@@ -88,7 +89,7 @@ for k in range(int(T / dt)):
 # plotting
 plt.plot(np.arange(0, T, dt), z_max, color='red', linestyle="dashed")
 plt.plot(np.arange(0, T, dt), z_min, color='blue', linestyle="dashed")
-plt.plot(np.arange(0, T, dt), z_ref, color='green', linestyle="dashed")
+plt.plot(np.arange(0, T, dt), z_ref[:int(T / dt)], color='green', linestyle="dashed")
 plt.plot(np.arange(0, T, dt), np.array(z_cop), color='black')
 # plt.ylim(-0.2, 0.2)
 plt.show()

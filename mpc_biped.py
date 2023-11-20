@@ -1,5 +1,7 @@
+import sys
 import numpy as np
 import scipy
+from scipy.ndimage import gaussian_filter1d
 import matplotlib.pyplot as plt
 
 # Constants
@@ -56,12 +58,21 @@ z_min[
 ] = min_max_constraint
 
 z_ref = (z_max + z_min) / 2
+if "-sw" in sys.argv:
+    z_ref = np.convolve(z_ref, np.ones(20)/20, mode="valid")
+    z_ref = np.concatenate((
+        (min_constraint + max_constraint) / 2 * np.ones(10),
+        z_ref,
+        (min_constraint + max_constraint) / 2 * np.ones(9),
+    ))
+elif "-gf" in sys.argv:
+    z_ref = gaussian_filter1d(z_ref, sigma=7)
 z_ref = np.concatenate((z_ref, (min_constraint + max_constraint) / 2 * np.ones(N)))
 
 
 # plt.plot(np.arange(0, T, dt), z_max, color='red', linestyle="dashed")
 # plt.plot(np.arange(0, T, dt), z_min, color='blue', linestyle="dashed")
-# plt.plot(np.arange(0, T, dt), z_ref, color='green', linestyle="dashed")
+# plt.plot(np.arange(0, T, dt), z_ref[:int(T / dt)], color='green', linestyle="dashed")
 # plt.show()
 
 # analytical solution

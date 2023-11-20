@@ -78,18 +78,21 @@ P_u = scipy.linalg.toeplitz(
 
 x_k = x_0
 z_cop = []
+x_com = []
 for k in range(int(T / dt)):
     x_jerk = -np.matmul(
         np.linalg.inv(P_u.transpose() @ P_u + R / Q * np.ones((N, N))),
         P_u.transpose() @ (P_x @ x_k - z_ref[k : k + N]),
     )
     x_k = next_x(x_k, x_jerk[0])
+    x_com.append(x_k[0])
     z_cop.append(compute_z(x_k))
 
 # plotting
 plt.plot(np.arange(0, T, dt), z_max, color='red', linestyle="dashed")
 plt.plot(np.arange(0, T, dt), z_min, color='blue', linestyle="dashed")
 plt.plot(np.arange(0, T, dt), z_ref[:int(T / dt)], color='green', linestyle="dashed")
+plt.plot(np.arange(0, T, dt), np.array(x_com), color='black', linewidth=4)
 plt.plot(np.arange(0, T, dt), np.array(z_cop), color='black')
 # plt.ylim(-0.2, 0.2)
 plt.show()

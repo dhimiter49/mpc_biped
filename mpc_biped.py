@@ -4,6 +4,7 @@ import scipy
 from scipy.ndimage import gaussian_filter1d
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from qpsolvers import solve_qp
 
 # Constants
 max_constraint = 0.17
@@ -58,63 +59,84 @@ z_min[
     int(start_time / dt + 4 * short_period + 2 * period + diff_period)
 ] = min_max_constraint
 
-z_ref = (z_max + z_min) / 2
-if "-sw" in sys.argv:
-    z_ref = np.convolve(z_ref, np.ones(20)/20, mode="valid")
-    z_ref = np.concatenate((
-        (min_constraint + max_constraint) / 2 * np.ones(10),
-        z_ref,
-        (min_constraint + max_constraint) / 2 * np.ones(9),
-    ))
-elif "-gf" in sys.argv:
-    z_ref = gaussian_filter1d(z_ref, sigma=7)
-elif "-p" in sys.argv:
-    for i in range(len(z_ref)):
-        if i < 10 or i > len(z_ref) - 10:
-            continue
-        if np.mean(np.abs(z_max[i : i + 10])) > np.mean(np.abs(z_min[i - 10 : i])):
-            z_ref[i] = (max_constraint + min_max_constraint) / 2
-        elif np.mean(np.abs(z_max[i : i + 10])) < np.mean(np.abs(z_min[i - 10 : i])):
-            z_ref[i] = (min_constraint + max_min_constraint) / 2
-        elif np.mean(np.abs(z_max[i - 10 : i])) < np.mean(np.abs(z_min[i : i + 10])):
-            z_ref[i] = (min_constraint + max_min_constraint) / 2
-        elif np.mean(np.abs(z_max[i -10 : i])) > np.mean(np.abs(z_min[i : i + 10])):
-            z_ref[i] = (max_constraint + min_max_constraint) / 2
-    z_ref = gaussian_filter1d(z_ref, sigma=5)
-z_ref = np.concatenate((z_ref, (min_constraint + max_constraint) / 2 * np.ones(N)))
+
+def calc_z_ref():
+    z_ref = (z_max + z_min) / 2
+    if "-sw" in sys.argv:
+        z_ref = np.convolve(z_ref, np.ones(20)/20, mode="valid")
+        z_ref = np.concatenate((
+            (min_constraint + max_constraint) / 2 * np.ones(10),
+            z_ref,
+            (min_constraint + max_constraint) / 2 * np.ones(9),
+        ))
+    elif "-gf" in sys.argv:
+        z_ref = gaussian_filter1d(z_ref, sigma=7)
+    elif "-pr" in sys.argv:  # perfect reference, smoothed step func between min max
+        for i in range(len(z_ref)):
+            if i < 10 or i > len(z_ref) - 10:
+                continue
+            if np.mean(np.abs(z_max[i : i + 10])) > np.mean(np.abs(z_min[i - 10 : i])):
+                z_ref[i] = (max_constraint + min_max_constraint) / 2
+            elif np.mean(np.abs(z_max[i : i + 10])) < np.mean(np.abs(z_min[i - 10 : i])):
+                z_ref[i] = (min_constraint + max_min_constraint) / 2
+            elif np.mean(np.abs(z_max[i -10 : i])) > np.mean(np.abs(z_min[i : i + 10])):
+                z_ref[i] = (max_constraint + min_max_constraint) / 2
+            elif np.mean(np.abs(z_max[i - 10 : i])) < np.mean(np.abs(z_min[i : i + 10])):
+                z_ref[i] = (min_constraint + max_min_constraint) / 2
+        z_ref = gaussian_filter1d(z_ref, sigma=5)
+
+    if "-tref" in sys.argv:
+        plt.plot(np.arange(0, T, dt), z_max, color='red', linestyle="dashed")
+        plt.plot(np.arange(0, T, dt), z_min, color='blue', linestyle="dashed")
+        plt.plot(
+            np.arange(0, T, dt), z_ref[:int(T / dt)], color='green', linestyle="dashed"
+        )
+        plt.show()
+        exit()
+    z_ref = np.concatenate((z_ref, (min_constraint + max_constraint) / 2 * np.ones(N)))
+    return z_ref
 
 
-if "-tref" in sys.argv:
-    plt.plot(np.arange(0, T, dt), z_max, color='red', linestyle="dashed")
-    plt.plot(np.arange(0, T, dt), z_min, color='blue', linestyle="dashed")
-    plt.plot(np.arange(0, T, dt), z_ref[:int(T / dt)], color='green', linestyle="dashed")
-    plt.show()
-    exit()
+def analytical_solution():
+    z_ref = calc_z_ref()
+    P_x = np.ones((N, 3))
+    P_x[:, 1] *= np.array([dt * i for i in range(1, N + 1)])
+    P_x[:, 2] *= np.array([dt ** 2 * i ** 2 / 2 - h_com / g for i in range(1, N + 1)])
 
-# analytical solution
-P_x = np.ones((N, 3))
-P_x[:, 1] *= np.array([dt * i for i in range(1, N + 1)])
-P_x[:, 2] *= np.array([dt ** 2 * i ** 2 / 2 - h_com / g for i in range(1, N + 1)])
-
-P_u = scipy.linalg.toeplitz(
-    np.array(
-        [(1 + 3 * i + 3 * i ** 2) * dt ** 3 / 6 - dt * h_com / g for i in range(N)]
-    ),
-    np.zeros(N),
-)
-
-x_k = x_0
-z_cop = []
-x_com = []
-for k in tqdm(range(int(T / dt))):
-    x_jerk = -np.matmul(
-        np.linalg.inv(P_u.transpose() @ P_u + R / Q * np.ones((N, N))),
-        P_u.transpose() @ (P_x @ x_k - z_ref[k : k + N]),
+    P_u = scipy.linalg.toeplitz(
+        np.array(
+            [(1 + 3 * i + 3 * i ** 2) * dt ** 3 / 6 - dt * h_com / g for i in range(N)]
+        ),
+        np.zeros(N),
     )
-    x_k = next_x(x_k, x_jerk[0])
-    # x_k += np.random.normal([0.0, 0.0, 0.0], [0.001, 0.0005, 0.0001])
-    x_com.append(x_k[0])
-    z_cop.append(compute_z(x_k))
+
+    x_k = x_0
+    z_cop = []
+    x_com = []
+    for k in tqdm(range(int(T / dt))):
+        x_jerk = -np.matmul(
+            np.linalg.inv(P_u.transpose() @ P_u + R / Q * np.ones((N, N))),
+            P_u.transpose() @ (P_x @ x_k - z_ref[k : k + N]),
+        )
+        x_k = next_x(x_k, x_jerk[0])
+        # x_k += np.random.normal([0.0, 0.0, 0.0], [0.001, 0.0005, 0.0001])
+        x_com.append(x_k[0])
+        z_cop.append(compute_z(x_k))
+
+    return z_ref, x_com, z_cop
+
+
+def qp_solution():
+    z_ref = calc_z_ref()[:int(T / dt)]
+    x_com = np.zeros(z_ref.shape)
+    z_cop = np.zeros(z_ref.shape)
+    return z_ref, x_com, z_cop
+
+
+if "-qp" in sys.argv:
+    z_ref, x_com, z_cop = qp_solution()
+else:
+    z_ref, x_com, z_cop = analytical_solution()
 
 # plotting
 plt.plot(np.arange(0, T, dt), z_max, color='red', linestyle="dashed")

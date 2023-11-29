@@ -68,13 +68,28 @@ if "-sw" in sys.argv:
     ))
 elif "-gf" in sys.argv:
     z_ref = gaussian_filter1d(z_ref, sigma=7)
+elif "-p" in sys.argv:
+    for i in range(len(z_ref)):
+        if i < 10 or i > len(z_ref) - 10:
+            continue
+        if np.mean(np.abs(z_max[i : i + 10])) > np.mean(np.abs(z_min[i - 10 : i])):
+            z_ref[i] = (max_constraint + min_max_constraint) / 2
+        elif np.mean(np.abs(z_max[i : i + 10])) < np.mean(np.abs(z_min[i - 10 : i])):
+            z_ref[i] = (min_constraint + max_min_constraint) / 2
+        elif np.mean(np.abs(z_max[i - 10 : i])) < np.mean(np.abs(z_min[i : i + 10])):
+            z_ref[i] = (min_constraint + max_min_constraint) / 2
+        elif np.mean(np.abs(z_max[i -10 : i])) > np.mean(np.abs(z_min[i : i + 10])):
+            z_ref[i] = (max_constraint + min_max_constraint) / 2
+    z_ref = gaussian_filter1d(z_ref, sigma=5)
 z_ref = np.concatenate((z_ref, (min_constraint + max_constraint) / 2 * np.ones(N)))
 
 
-# plt.plot(np.arange(0, T, dt), z_max, color='red', linestyle="dashed")
-# plt.plot(np.arange(0, T, dt), z_min, color='blue', linestyle="dashed")
-# plt.plot(np.arange(0, T, dt), z_ref[:int(T / dt)], color='green', linestyle="dashed")
-# plt.show()
+if "-tref" in sys.argv:
+    plt.plot(np.arange(0, T, dt), z_max, color='red', linestyle="dashed")
+    plt.plot(np.arange(0, T, dt), z_min, color='blue', linestyle="dashed")
+    plt.plot(np.arange(0, T, dt), z_ref[:int(T / dt)], color='green', linestyle="dashed")
+    plt.show()
+    exit()
 
 # analytical solution
 P_x = np.ones((N, 3))

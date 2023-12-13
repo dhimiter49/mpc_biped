@@ -11,17 +11,17 @@ max_constraint = 0.17
 min_constraint = -max_constraint
 max_min_constraint = -0.03
 min_max_constraint = -max_min_constraint
-start_time = 2.5  # in ms
-end_time = 7.5  # in ms
+start_time = 2.5  # in s
+end_time = 7.5  # in s
 g = 9.81  # gravity
 h_com = 0.8  # height of CoM
 R = 1
 Q = 1e6
-dt = 0.005  # in ms
+dt = 0.005  # in s
 N = 300  # lookahead
-T = 9  # in ms
-period = 1 // dt  # in ms
-short_period = 0.8 // dt  # in ms
+T = 9  # in s
+period = 1 // dt  # in s
+short_period = 0.8 // dt  # in s
 diff_period = (period - short_period) // 2
 
 
@@ -61,12 +61,13 @@ z_min[
 
 P_x = np.ones((N, 3))
 P_x[:, 1] *= np.array([dt * i for i in range(1, N + 1)])
-P_x[:, 2] *= np.array([dt ** 2 * i ** 2 / 2 - h_com / g for i in range(1, N + 1)])
+P_x[:, 2] *= np.array([(dt ** 2) * (i ** 2) / 2 - h_com / g for i in range(1, N + 1)])
 
 P_u = scipy.linalg.toeplitz(
-    np.array([(1 + 3 * i + 3 * i ** 2) * dt ** 3 / 6 - dt * h_com / g for i in range(N)]),
+    np.array([(1 + 3 * i + 3 * i ** 2) * (dt ** 3) / 6 - dt * h_com / g for i in range(N)]),
     np.zeros(N),
 )
+P_u_inv = scipy.linalg.inv(P_u)
 
 
 def calc_z_ref():
@@ -95,8 +96,12 @@ def calc_z_ref():
         z_ref = gaussian_filter1d(z_ref, sigma=5)
 
     if "-tref" in sys.argv:
-        plt.plot(np.arange(0, T, dt), z_max, color='red', linestyle="dashed")
-        plt.plot(np.arange(0, T, dt), z_min, color='blue', linestyle="dashed")
+        plt.plot(
+            np.arange(0, T, dt), z_max[:int(T / dt)], color='red', linestyle="dashed"
+        )
+        plt.plot(
+            np.arange(0, T, dt), z_min[:int(T / dt)], color='blue', linestyle="dashed"
+        )
         plt.plot(
             np.arange(0, T, dt), z_ref[:int(T / dt)], color='green', linestyle="dashed"
         )

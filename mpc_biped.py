@@ -63,10 +63,16 @@ P_x = np.ones((N, 3))
 P_x[:, 1] *= np.array([dt * i for i in range(1, N + 1)])
 P_x[:, 2] *= np.array([(dt ** 2) * (i ** 2) / 2 - h_com / g for i in range(1, N + 1)])
 
-P_u = scipy.linalg.toeplitz(
-    np.array([(1 + 3 * i + 3 * i ** 2) * (dt ** 3) / 6 - dt * h_com / g for i in range(N)]),
-    np.zeros(N),
+row = np.zeros(N, dtype=np.float128)
+col = np.array(
+    [
+        (1 + 3 * i + 3 * i ** 2) * dt ** 3 / 6 - dt * h_com / g
+        for i in range(N)
+    ],
+    dtype=np.float128
 )
+P_u = scipy.linalg.toeplitz(col, row)
+# print(np.linalg.cond(P_u))  # equal to 1259
 P_u_inv = scipy.linalg.inv(P_u)
 
 
@@ -134,15 +140,58 @@ def qp_solution():
     x_k = x_0
     z_cop = []
     x_com = []
-    P = 10e6 * np.eye(N)
+    P = np.eye(N)
     q = np.zeros(N)
+    G = P_u  # np.eye(N)
     for k in tqdm(range(int(T / dt))):
-        z_min_jerk = np.linalg.inv(P_u) @ (z_min[k : k + N] - P_x @ x_k)
-        z_max_jerk = np.linalg.inv(P_u) @ (z_max[k : k + N] - P_x @ x_k)
-        lb = np.minimum(z_min_jerk, z_max_jerk)
-        ub = np.maximum(z_min_jerk, z_max_jerk)
-        x_jerk = solve_qp(P, q, lb=lb, ub=ub, solver="osqp")
-        x_k = next_x(x_k, x_jerk[0])
+        z_min_jerk = z_min[k : k + N] - P_x @ x_k
+        z_max_jerk = z_max[k : k + N] - P_x @ x_k
+
+        # z_min_jerk = P_u_inv @ z_min_jerk
+        # z_max_jerk = P_u_inv @ z_max_jerk
+        # lb = np.minimum(z_max_jerk, z_min_jerk)
+        # ub = np.maximum(z_max_jerk, z_min_jerk)
+
+        # # if k >= 350:
+        # #     plt.plot(np.arange(0, N), 1000 * z_max[k : k + N], color='red', linestyle="dashed")
+        # #     plt.plot(np.arange(0, N), 1000 * z_min[k : k + N], color='blue', linestyle="dashed")
+        # #     plt.plot(np.arange(0, N), z_max_jerk, color='red', linestyle="dashed")
+        # #     plt.plot(np.arange(0, N), z_min_jerk, color='blue', linestyle="dashed")
+        # #     plt.plot(np.arange(0, N), ub, color='red')
+        # #     plt.plot(np.arange(0, N), lb, color='blue')
+        # #     # plt.show()
+
+        # x_jerk = solve_qp(P, q, lb=lb, ub=ub, solver="osqp")
+        # x_k = next_x(x_k, x_jerk[0])
+        # x_jerk = solve_qp(P, q, G, 1000 * np.ones(lb.shape), lb=, ub=ub, solver="highs")
+
+        try:
+            x_jerk = solve_qp(
+                P, q, G=np.vstack([G, G]), h=np.hstack([z_max_jerk, -z_min_jerk]),
+                solver="osqp"
+                # verbose=True,
+                #'clarabel', 'cvxopt', 'daqp', 'ecos', 'highs', 'osqp', 'piqp', 'proxqp', 'scs'
+            )
+            x_k = next_x(x_k, x_jerk[0])
+
+            # if k > 350:
+            #     plt.subplot(211)
+            #     plt.plot(np.arange(0, N), z_max_jerk, color='red', linestyle="dashed")
+            #     plt.plot(np.arange(0, N), z_min_jerk, color='blue', linestyle="dashed")
+            #     plt.plot(np.arange(0, N), G @ x_jerk, color='black', linestyle="dashed")
+            #     plt.plot(np.arange(0, N), x_jerk, color='black')
+            #     plt.subplot(212)
+            #     plt.plot(np.arange(0, len(x_com)), z_max[:len(x_com)], color='red', linestyle="dashed")
+            #     plt.plot(np.arange(0, len(x_com)), z_min[:len(x_com)], color='blue', linestyle="dashed")
+            #     plt.plot(np.arange(0, len(x_com)), np.array(z_cop), color='black')
+            #     plt.show()
+        except (ValueError, TypeError):
+            plt.plot(np.arange(0, N), z_max_jerk, color='red', linestyle="dashed")
+            plt.plot(np.arange(0, N), z_min_jerk, color='blue', linestyle="dashed")
+            plt.show()
+            return z_ref, x_com, z_cop
+
+
         # x_k += np.random.normal([0.0, 0.0, 0.0], [0.001, 0.0005, 0.0001])
         x_com.append(x_k[0])
         z_cop.append(compute_z(x_k))

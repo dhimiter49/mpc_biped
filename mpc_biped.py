@@ -136,20 +136,24 @@ def analytical_solution():
 
 
 def qp_solution():
-    z_ref = calc_z_ref()[:int(T / dt)]
+    z_ref = calc_z_ref()
     x_k = x_0
     z_cop = []
     x_com = []
     P = np.eye(N)
+    if "-mr" in sys.argv:
+        P += 50 * P_u ** 2
     q = np.zeros(N)
-    G = P_u  # np.eye(N)
+    G = P_u
     for k in tqdm(range(int(T / dt))):
         z_min_jerk = z_min[k : k + N] - P_x @ x_k
         z_max_jerk = z_max[k : k + N] - P_x @ x_k
+        if "-mr" in sys.argv:
+            q = 50 * P_u @ (P_x @ x_k - z_ref[k : k + N])
 
         x_jerk = solve_qp(
             P, q, G=np.vstack([G, -G]), h=np.hstack([z_max_jerk, -z_min_jerk]),
-            solver="clarabel"
+            solver="osqp"
             #'clarabel', 'cvxopt', 'daqp', 'ecos', 'highs', 'osqp', 'piqp', 'proxqp', 'scs'
         )
         x_k = next_x(x_k, x_jerk[0])

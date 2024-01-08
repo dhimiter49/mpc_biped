@@ -120,7 +120,7 @@ int main( )
     Eigen::MatrixXd P_u_x_inv = P_u_x.inverse();
 
     real_t P_u_inv[N * N] = { 0.0 };
- 	for (int i = 0; i < P_u_x_inv.rows(); ++i) {
+    for (int i = 0; i < P_u_x_inv.rows(); ++i) {
         for (int j = 0; j < P_u_x_inv.cols(); ++j) {
             P_u_inv[i * N + j] = P_u_x_inv(i, j);
         }
@@ -172,15 +172,16 @@ int main( )
             upper_[i] = z_max[index + i] - temp[i];
             lower_[i] = z_min[index + i] - temp[i];
         }
-		mat_vec_mul_n(P_u_inv, upper_, upper);
-		mat_vec_mul_n(P_u_inv, lower_, lower);
-		for (int i = 0; i < N; ++i){
-			if (lower[i] > upper[i]) {
-				double temp = lower[i];
-				lower[i] = upper[i];
-				upper[i] = temp;
-			}
-		}
+        mat_vec_mul_n(P_u_inv, upper_, upper);
+        mat_vec_mul_n(P_u_inv, lower_, lower);
+        for (int i = 0; i < N; ++i){
+            if (lower[i] > upper[i]) {
+                double temp = lower[i];
+                lower[i] = upper[i];
+                upper[i] = temp;
+            }
+        }
+        std::cout << std::endl;
     };
 
     /* Setup data of first QP. */
@@ -193,11 +194,18 @@ int main( )
 
     real_t g[N] = { 0.0 };
 
-	real_t lb[N] = { 0.0 };
+    real_t lb[N] = { 0.0 };
     real_t ub[N] = { 0.0 };
 
     real_t lbA[N] = { 0.0 };
     real_t ubA[N] = { 0.0 };
+
+    /* Setting up QProblem object. */
+    QProblem example( N,2 );
+    Options options;
+    options.printLevel = PL_NONE;
+    example.setOptions( options );
+    int_t nWSR = 10;
 
     double cops[int(T / dt)] = { 0.0 };
     double jerks[int(T / dt)] = { 0.0 };
@@ -206,23 +214,28 @@ int main( )
         creat_constraint(i, x_k, lbA, ubA);
         creat_constraint_(i, x_k, lb, ub);
 
-        /* Setting up QProblem object. */
-        QProblem example( N,1 );
-
-        Options options;
-        options.printLevel = PL_NONE;
-        example.setOptions( options );
-
-        /* Solve first QP. */
-        int_t nWSR = 10;
-        example.init( H,g,A,lb,ub,lbA,ubA, nWSR );
+        if (i == 0) {
+            example.init( H,g,A,lb,ub,lbA,ubA, nWSR );
+        }
+        else {
+            example.hotstart( g,lb,ub,lbA,ubA, nWSR );
+        }
 
         /* Get and print solution of first QP. */
         real_t xOpt[N];
-        real_t yOpt[N + 1];
+        real_t yOpt[N + 2];
         example.getPrimalSolution( xOpt );
         example.getDualSolution( yOpt );
         real_t jerk = yOpt[0];
+
+        if (i > 250) {
+            for (int i = 0; i < N + 2; ++i) {
+                std::cout << yOpt[0] << " ";
+            }
+            std::cout << std::endl;
+            std::string temp;
+            std::getline(std::cin, temp);
+        }
 
         real_t new_x[3];
         next_x(x_k, jerk, new_x);
@@ -235,8 +248,8 @@ int main( )
     for (int i = 0; i < int(T / dt); ++i) {
         std::cout << cops[i] << " ";
     }
-	std::cout << std::endl;
-	std::cout << std::endl;
+    std::cout << std::endl;
+    std::cout << std::endl;
     for (int i = 0; i < int(T / dt); ++i) {
         std::cout << jerks[i] << " ";
     }

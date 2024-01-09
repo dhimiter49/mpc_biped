@@ -23,6 +23,7 @@ T = 9  # in s
 period = 1 // dt  # in s
 short_period = 0.8 // dt  # in s
 diff_period = (period - short_period) // 2
+factor = float(sys.argv[sys.argv.index("-f") + 1]) if "-f" in sys.argv else 1
 
 
 # Iteration dynamics
@@ -32,6 +33,14 @@ dyn_jerk = np.array([[dt ** 3 /6, dt ** 2 / 2, dt]])
 z_comp = np.array([1, 0, -h_com / g])
 next_x = lambda x, x_jerk : (dyn_mat @ x + x_jerk * dyn_jerk).flatten()
 compute_z = lambda x : np.sum(z_comp * x)
+def iterative_x_k(x_k, jerks):
+    q = np.zeros(N)
+    for i, jerk in enumerate(jerks):
+        next_x_k = next_x(x_k, jerk)
+        q[i] = np.dot(dyn_mat[0], x_k) * dyn_jerk[0][0]
+        x_k = next_x_k
+    return q
+
 
 # Constraints/bounds
 z_max = max_constraint * np.ones(int(T / dt) + N)
@@ -142,14 +151,19 @@ def qp_solution():
     x_com = []
     P = np.eye(N)
     if "-mr" in sys.argv:
-        P += 50 * P_u ** 2
+        P += factor * P_u ** 2
+    if "-mx" in sys.argv:
+        P += factor * (T ** 3 / 6) ** 2 * np.eye(N)
     q = np.zeros(N)
     G = P_u
+    x_jerk = np.zeros(N)
     for k in tqdm(range(int(T / dt))):
         z_min_jerk = z_min[k : k + N] - P_x @ x_k
         z_max_jerk = z_max[k : k + N] - P_x @ x_k
         if "-mr" in sys.argv:
-            q = 50 * P_u @ (P_x @ x_k - z_ref[k : k + N])
+            q = factor * P_u @ (P_x @ x_k - z_ref[k : k + N])
+        if "-mx" in sys.argv:
+            q = factor * iterative_x_k(x_k, x_jerk)
 
         x_jerk = solve_qp(
             P, q, G=np.vstack([G, -G]), h=np.hstack([z_max_jerk, -z_min_jerk]),

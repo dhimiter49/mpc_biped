@@ -3,6 +3,7 @@ import numpy as np
 import scipy
 from scipy.ndimage import gaussian_filter1d
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 from tqdm import tqdm
 from qpsolvers import solve_qp
 
@@ -218,12 +219,14 @@ def qp_solution():
         x_com.append(x_k[0])
         z_cop.append(compute_z(x_k))
         jerks.append(x_jerk[0])
+    print("Final position, velocity and acceleration: ", x_k)
     return z_ref, x_com, z_cop, jerks
 
 
 z_ref, x_com, z_cop, jerks = qp_solution() if "-qp" in sys.argv else analytical_solution()
 jerks = np.array(jerks)
-pulse = np.arange(0, len(jerks))
+pulse = np.arange(0, T, DT)
+# pulse = np.arange(0, len(jerks))
 
 # plotting
 norm = plt.Normalize(-1, 1)

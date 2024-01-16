@@ -62,17 +62,22 @@ Z_MIN[
     int(START_TIME / DT + 4 * SHORT_PERIOD + 2 * PERIOD + DIFF_PERIOD)
 ] = MIN_MAX_CONSTRAINT
 
-P_x = np.ones((N, 3))
+P_x = np.ones((N, 3), dtype=np.float128)
 P_x[:, 1] *= np.array([DT * i for i in range(1, N + 1)])
 P_x[:, 2] *= np.array([(DT ** 2) * (i ** 2) / 2 - H_COM / G for i in range(1, N + 1)])
-P_xx = np.ones((N, 3))
+P_xx = np.ones((N, 3), dtype=np.float128)
 P_xx[:, 1] *= np.array([DT * i for i in range(1, N + 1)])
 P_xx[:, 2] *= np.array([(DT ** 2) * (i ** 2) / 2 for i in range(1, N + 1)])
+P_xv = np.zeros((N, 3), dtype=np.float128)
+P_xv[:, 1] = 1
+P_xv[:, 2] *= np.array([(DT * i) for i in range(1, N + 1)])
+P_xa = np.zeros((N, 3), dtype=np.float128)
+P_xa[:, 2] = 1
 
 P_u = scipy.linalg.toeplitz(
     np.array(
         [(1 + 3 * i + 3 * i ** 2) * DT ** 3 / 6 - DT * H_COM / G for i in range(N)],
-        dtype=np.float128,
+        dtype=np.float128
     ),
     np.zeros(N)
 )
@@ -80,16 +85,21 @@ P_u_inv = scipy.linalg.inv(P_u)
 
 P_ux = scipy.linalg.toeplitz(
     np.array(
-        [(1 + 3 * i + 3 * i ** 2) * DT ** 3 / 6 for i in range(N)],
-        dtype=np.float128,
+        [(1 + 3 * i + 3 * i ** 2) * DT ** 3 / 6 for i in range(N)], dtype=np.float128,
     ),
     np.zeros(N)
 )
-def get_x_ks(x_k, jerks):
-    return P_xx @ x_k + P_ux @ jerks
+P_uv = scipy.linalg.toeplitz(
+    np.array([(1 + 2 * i) * DT ** 2 / 2 for i in range(N)], dtype=np.float128),
+    np.zeros(N)
+)
+P_ua = scipy.linalg.toeplitz(
+    np.array([i * DT for i in range(N)], dtype=np.float128),
+    np.zeros(N)
+)
 
 
-def calc_z_ref():
+def calc_z_ref() -> np.ndarray:
     z_ref = (Z_MAX + Z_MIN) / 2
     if "-sw" in sys.argv:
         z_ref = np.convolve(z_ref, np.ones(20)/20, mode="valid")
@@ -135,10 +145,12 @@ def analytical_solution():
     x_k = x_0
     z_cop = []
     x_com = []
+    P_u_ = P_u.astype(np.float64)
+    P_x_ = P_x.astype(np.float64)
     for k in tqdm(range(int(T / DT))):
         x_jerk = -np.matmul(
-            np.linalg.inv(P_u.transpose() @ P_u + R / Q * np.ones((N, N))),
-            P_u.transpose() @ (P_x @ x_k - z_ref[k : k + N]),
+            np.linalg.inv(P_u_.transpose() @ P_u_ + R / Q * np.ones((N, N))),
+            P_u_.transpose() @ (P_x_ @ x_k - z_ref[k : k + N]),
         )
         x_k = next_x(x_k, x_jerk[0])
         # x_k += np.random.normal([0.0, 0.0, 0.0], [0.001, 0.0005, 0.0001])
@@ -161,30 +173,36 @@ def qp_solution():
     x_jerk = np.zeros(N)
     for k in tqdm(range(int(T / DT))):
         horizon = min(int(T / DT) - k, N) if "-dh" in sys.argv else N
+        z_min_jerk = Z_MIN[k : k + horizon] - P_x[: horizon] @ x_k
+        z_max_jerk = Z_MAX[k : k + horizon] - P_x[: horizon] @ x_k
+        con_M = con_M[:horizon, :horizon]
+        opt_M = opt_M[:horizon, :horizon]
 
         if "-mr" in sys.argv:
             opt_V = factor * P_u @ (P_x @ x_k - z_ref[k : k + N])
         if "-mx" in sys.argv:
             opt_V = factor * P_xx @ x_k @ P_ux
-        if "-tc" in sys.argv and int(T / DT) - k <= N:
-            last_M = np.zeros(horizon)
-            last_M[-1] = 1
-            last_M = np.diag(last_M)
-            b = -last_M @ P_xx @ x_k
-            eqcon_M = last_M @ P_ux
-
-        z_min_jerk = Z_MIN[k : k + horizon] - P_x[: horizon] @ x_k
-        z_max_jerk = Z_MAX[k : k + horizon] - P_x[: horizon] @ x_k
-        con_M = con_M[:horizon, :horizon]
-        opt_M = opt_M[:horizon, :horizon]
         opt_V = opt_V[:horizon]
-
         if "-tc" in sys.argv and int(T / DT) - k <= N:
+            eqcon_x_M = P_ux[horizon - 1 : horizon, :horizon]
+            eqcon_v_M = P_uv[horizon - 1, :horizon]
+            eqcon_a_M = P_ua[horizon - 1, :horizon]
+            b_x, b_v, b_a = P_xx @ x_k, P_xv @ x_k, P_xa @ x_k
+            b_x, b_v, b_a = (
+                -b_x[horizon - 1 : horizon],
+                -b_v[horizon - 1 : horizon],
+                -b_a[horizon - 1 : horizon]
+            )
+            b_x, b_v, b_a = (
+                np.reshape(b_x, (1,)),
+                np.reshape(b_v, (1,)),
+                np.reshape(b_a, (1,))
+            )
             x_jerk = solve_qp(
                 opt_M, opt_V,
                 G=np.vstack([con_M, -con_M]), h=np.hstack([z_max_jerk, -z_min_jerk]),
-                A=eqcon_M,
-                b=b,
+                A=np.vstack([eqcon_x_M, eqcon_a_M]),
+                b=np.hstack([b_x, b_a]),
                 solver="clarabel"
                 #clarabel, cvxopt, daqp, ecos, highs, osqp, piqp, proxqp, scs
             )

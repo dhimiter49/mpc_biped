@@ -34,13 +34,6 @@ DYN_JERK = np.array([[DT ** 3 / 6, DT ** 2 / 2, DT]])
 Z_COMP = np.array([1, 0, -H_COM / G])
 next_x = lambda x, x_jerk : (DYN_MAT @ x + x_jerk * DYN_JERK).flatten()
 compute_z = lambda x : np.sum(Z_COMP * x)
-def iterative_x_k(x_k, jerks):
-    q = np.zeros(N)
-    for i, jerk in enumerate(jerks):
-        next_x_k = next_x(x_k, jerk)
-        q[i] = np.dot(DYN_MAT[0], x_k) * DYN_JERK[0][0]
-        x_k = next_x_k
-    return q
 
 
 # Constraints/bounds
@@ -161,6 +154,8 @@ def qp_solution():
     z_cop = []
     x_com = []
     opt_M = np.eye(N)
+    if "-mx" in sys.argv:
+        opt_M += factor * P_ux ** 2
     opt_V = np.zeros(N)
     con_M = P_u
     x_jerk = np.zeros(N)
@@ -170,7 +165,7 @@ def qp_solution():
         if "-mr" in sys.argv:
             opt_V = factor * P_u @ (P_x @ x_k - z_ref[k : k + N])
         if "-mx" in sys.argv:
-            opt_V = factor * iterative_x_k(x_k, x_jerk)
+            opt_V = factor * P_xx @ x_k @ P_ux
         if "-tc" in sys.argv and int(T / DT) - k <= N:
             last_M = np.zeros(horizon)
             last_M[-1] = 1

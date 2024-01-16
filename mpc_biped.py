@@ -70,7 +70,7 @@ P_xx[:, 1] *= np.array([DT * i for i in range(1, N + 1)])
 P_xx[:, 2] *= np.array([(DT ** 2) * (i ** 2) / 2 for i in range(1, N + 1)])
 P_xv = np.zeros((N, 3), dtype=np.float128)
 P_xv[:, 1] = 1
-P_xv[:, 2] *= np.array([(DT * i) for i in range(1, N + 1)])
+P_xv[:, 2] = np.array([(DT * i) for i in range(1, N + 1)])
 P_xa = np.zeros((N, 3), dtype=np.float128)
 P_xa[:, 2] = 1
 
@@ -94,8 +94,7 @@ P_uv = scipy.linalg.toeplitz(
     np.zeros(N)
 )
 P_ua = scipy.linalg.toeplitz(
-    np.array([i * DT for i in range(N)], dtype=np.float128),
-    np.zeros(N)
+    np.array([DT] * N, dtype=np.float128), np.zeros(N)
 )
 
 
@@ -168,8 +167,8 @@ def qp_solution():
     x_com = []
     jerks = []
     opt_M = np.eye(N)
-    if "-mx" in sys.argv:
-        opt_M += factor * P_ux ** 2
+    # if "-mx" in sys.argv:
+    #     opt_M += factor * P_ux ** 2
     opt_V = np.zeros(N)
     con_M = P_u
     x_jerk = np.zeros(N)
@@ -186,25 +185,21 @@ def qp_solution():
             opt_V = factor * P_xx @ x_k @ P_ux
         opt_V = opt_V[:horizon]
         if "-tc" in sys.argv and int(T / DT) - k <= N:
-            eqcon_x_M = P_ux[horizon - 1 : horizon, :horizon]
-            eqcon_v_M = P_uv[horizon - 1, :horizon]
-            eqcon_a_M = P_ua[horizon - 1, :horizon]
+            start = max(0, horizon - 1)
+            eqcon_x_M = P_ux[start : horizon, :horizon]
+            eqcon_v_M = P_uv[start : horizon, :horizon]
+            eqcon_a_M = P_ua[start : horizon, :horizon]
             b_x, b_v, b_a = P_xx @ x_k, P_xv @ x_k, P_xa @ x_k
             b_x, b_v, b_a = (
-                -b_x[horizon - 1 : horizon],
-                -b_v[horizon - 1 : horizon],
-                -b_a[horizon - 1 : horizon]
-            )
-            b_x, b_v, b_a = (
-                np.reshape(b_x, (1,)),
-                np.reshape(b_v, (1,)),
-                np.reshape(b_a, (1,))
+                -b_x[start : horizon],
+                -b_v[start : horizon],
+                -b_a[start : horizon]
             )
             x_jerk = solve_qp(
                 opt_M, opt_V,
                 G=np.vstack([con_M, -con_M]), h=np.hstack([z_max_jerk, -z_min_jerk]),
-                A=np.vstack([eqcon_x_M, eqcon_a_M]),
-                b=np.hstack([b_x, b_a]),
+                A=np.vstack([eqcon_x_M, eqcon_v_M, eqcon_a_M]),
+                b=np.hstack([b_x, b_v, b_a]),
                 solver="clarabel"
                 #clarabel, cvxopt, daqp, ecos, highs, osqp, piqp, proxqp, scs
             )
@@ -228,20 +223,21 @@ def qp_solution():
 
 z_ref, x_com, z_cop, jerks = qp_solution() if "-qp" in sys.argv else analytical_solution()
 jerks = np.array(jerks)
+pulse = np.arange(0, len(jerks))
 
 # plotting
 norm = plt.Normalize(-1, 1)
-jerk_points = np.array([np.arange(0, T, DT), jerks * 0 + 0.16]).T.reshape(-1, 1, 2)
+jerk_points = np.array([pulse, jerks * 0 + 0.16]).T.reshape(-1, 1, 2)
 segments = np.concatenate([jerk_points[:-1], jerk_points[1:]], axis=1)
 lc = LineCollection(segments, cmap='viridis', norm=norm, linewidth=5)
 lc.set_array(jerks)
 ax = plt.gca()
 line = ax.add_collection(lc)
 
-plt.plot(np.arange(0, T, DT), Z_MAX[:int(T / DT)], color='red', linestyle="dashed")
-plt.plot(np.arange(0, T, DT), Z_MIN[:int(T / DT)], color='blue', linestyle="dashed")
-plt.plot(np.arange(0, T, DT), z_ref[:int(T / DT)], color='green', linestyle="dashed")
-plt.plot(np.arange(0, T, DT), np.array(x_com), color='black', linewidth=3)
-plt.plot(np.arange(0, T, DT), np.array(z_cop), color='black')
+plt.plot(pulse, Z_MAX[:len(pulse)], color='red', linestyle="dashed")
+plt.plot(pulse, Z_MIN[:len(pulse)], color='blue', linestyle="dashed")
+plt.plot(pulse, z_ref[:len(pulse)], color='green', linestyle="dashed")
+plt.plot(pulse, np.array(x_com), color='black', linewidth=3)
+plt.plot(pulse, np.array(z_cop), color='black')
 # plt.ylim(-0.2, 0.2)
 plt.show()

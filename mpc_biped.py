@@ -145,6 +145,7 @@ def analytical_solution():
     x_k = x_0
     z_cop = []
     x_com = []
+    jerks= []
     P_u_ = P_u.astype(np.float64)
     P_x_ = P_x.astype(np.float64)
     for k in tqdm(range(int(T / DT))):
@@ -156,8 +157,8 @@ def analytical_solution():
         # x_k += np.random.normal([0.0, 0.0, 0.0], [0.001, 0.0005, 0.0001])
         x_com.append(x_k[0])
         z_cop.append(compute_z(x_k))
-
-    return z_ref, x_com, z_cop
+        jerks.append(x_jerk[0])
+    return z_ref, x_com, z_cop, jerks
 
 
 def qp_solution():
@@ -165,6 +166,7 @@ def qp_solution():
     x_k = x_0
     z_cop = []
     x_com = []
+    jerks = []
     opt_M = np.eye(N)
     if "-mx" in sys.argv:
         opt_M += factor * P_ux ** 2
@@ -213,20 +215,29 @@ def qp_solution():
                 solver="clarabel",
                 #clarabel, cvxopt, daqp, ecos, highs, osqp, piqp, proxqp, scs
             )
+
+        assert x_jerk is not None
         x_k = next_x(x_k, x_jerk[0])
 
         # x_k += np.random.normal([0.0, 0.0, 0.0], [0.001, 0.0005, 0.0001])
         x_com.append(x_k[0])
         z_cop.append(compute_z(x_k))
-    return z_ref, x_com, z_cop
+        jerks.append(x_jerk[0])
+    return z_ref, x_com, z_cop, jerks
 
 
-if "-qp" in sys.argv:
-    z_ref, x_com, z_cop = qp_solution()
-else:
-    z_ref, x_com, z_cop = analytical_solution()
+z_ref, x_com, z_cop, jerks = qp_solution() if "-qp" in sys.argv else analytical_solution()
+jerks = np.array(jerks)
 
 # plotting
+norm = plt.Normalize(-1, 1)
+jerk_points = np.array([np.arange(0, T, DT), jerks * 0 + 0.16]).T.reshape(-1, 1, 2)
+segments = np.concatenate([jerk_points[:-1], jerk_points[1:]], axis=1)
+lc = LineCollection(segments, cmap='viridis', norm=norm, linewidth=5)
+lc.set_array(jerks)
+ax = plt.gca()
+line = ax.add_collection(lc)
+
 plt.plot(np.arange(0, T, DT), Z_MAX[:int(T / DT)], color='red', linestyle="dashed")
 plt.plot(np.arange(0, T, DT), Z_MIN[:int(T / DT)], color='blue', linestyle="dashed")
 plt.plot(np.arange(0, T, DT), z_ref[:int(T / DT)], color='green', linestyle="dashed")

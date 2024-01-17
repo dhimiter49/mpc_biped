@@ -26,6 +26,8 @@ PERIOD = 1 // DT  # in s
 SHORT_PERIOD = 0.8 // DT  # in s
 DIFF_PERIOD = (PERIOD - SHORT_PERIOD) // 2
 factor = float(sys.argv[sys.argv.index("-f") + 1]) if "-f" in sys.argv else 1
+# time when to stop can be different then time T when episode ends
+stop_at = float(sys.argv[sys.argv.index("-sa") + 1]) if "-sa" in sys.argv else T
 
 
 # Iteration dynamics
@@ -181,12 +183,14 @@ def qp_solution():
         opt_M = opt_M[:horizon, :horizon]
 
         if "-mr" in sys.argv:
-            opt_V = factor * P_u @ (P_x @ x_k - z_ref[k : k + N])
+            opt_V = factor * P_u.T @ (P_x @ x_k - z_ref[k : k + N])
         if "-mx" in sys.argv:
             opt_V = factor * P_xx @ x_k @ P_ux
         opt_V = opt_V[:horizon]
-        if "-tc" in sys.argv and int(T / DT) - k <= N:
-            start = max(0, horizon - 1)
+        if "-tc" in sys.argv and int(stop_at / DT) - k <= N:
+            start_max = horizon - 1 if int(T / DT) - k <= N else 0
+            start_min = int(stop_at / DT) - k - 1
+            start = max(start_min, start_max)
             eqcon_x_M = P_ux[start : horizon, :horizon]
             eqcon_v_M = P_uv[start : horizon, :horizon]
             eqcon_a_M = P_ua[start : horizon, :horizon]
@@ -232,7 +236,7 @@ pulse = np.arange(0, T, DT)
 norm = plt.Normalize(-1, 1)
 jerk_points = np.array([pulse, jerks * 0 + 0.16]).T.reshape(-1, 1, 2)
 segments = np.concatenate([jerk_points[:-1], jerk_points[1:]], axis=1)
-lc = LineCollection(segments, cmap='viridis', norm=norm, linewidth=5)
+lc = LineCollection(segments, cmap='viridis', norm=norm, linewidth=10)
 lc.set_array(jerks)
 ax = plt.gca()
 line = ax.add_collection(lc)

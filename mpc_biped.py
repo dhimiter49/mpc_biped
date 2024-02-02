@@ -39,7 +39,7 @@ next_x = lambda x, x_jerk : (DYN_MAT @ x + x_jerk * DYN_JERK).flatten()
 compute_z = lambda x : np.sum(Z_COMP * x)
 
 
-# Constraints/bounds
+# Constraints/bounds (in real application this depends on the gaits of the robot)
 Z_MAX = MAX_CONSTRAINT * np.ones(int(T / DT) + N)
 Z_MIN = MIN_CONSTRAINT * np.ones(int(T / DT) + N)
 Z_MAX[int(START_TIME / DT) : int(START_TIME / DT + SHORT_PERIOD)] = MAX_MIN_CONSTRAINT
@@ -65,18 +65,10 @@ Z_MIN[
     int(START_TIME / DT + 4 * SHORT_PERIOD + 2 * PERIOD + DIFF_PERIOD)
 ] = MIN_MAX_CONSTRAINT
 
+# Matrices to get the CoP from current position (P_x), control (P_u)
 P_x = np.ones((N, 3), dtype=np.float128)
 P_x[:, 1] *= np.array([DT * i for i in range(1, N + 1)])
 P_x[:, 2] *= np.array([(DT ** 2) * (i ** 2) / 2 - H_COM / G for i in range(1, N + 1)])
-P_xx = np.ones((N, 3), dtype=np.float128)
-P_xx[:, 1] *= np.array([DT * i for i in range(1, N + 1)])
-P_xx[:, 2] *= np.array([(DT ** 2) * (i ** 2) / 2 for i in range(1, N + 1)])
-P_xv = np.zeros((N, 3), dtype=np.float128)
-P_xv[:, 1] = 1
-P_xv[:, 2] = np.array([(DT * i) for i in range(1, N + 1)])
-P_xa = np.zeros((N, 3), dtype=np.float128)
-P_xa[:, 2] = 1
-
 P_u = scipy.linalg.toeplitz(
     np.array(
         [(1 + 3 * i + 3 * i ** 2) * DT ** 3 / 6 - DT * H_COM / G for i in range(N)],
@@ -85,6 +77,16 @@ P_u = scipy.linalg.toeplitz(
     np.zeros(N)
 )
 P_u_inv = scipy.linalg.inv(P_u)
+
+# Matrices to get other dependencies like position position, position vel and so on
+P_xx = np.ones((N, 3), dtype=np.float128)
+P_xx[:, 1] *= np.array([DT * i for i in range(1, N + 1)])
+P_xx[:, 2] *= np.array([(DT ** 2) * (i ** 2) / 2 for i in range(1, N + 1)])
+P_xv = np.zeros((N, 3), dtype=np.float128)
+P_xv[:, 1] = 1
+P_xv[:, 2] = np.array([(DT * i) for i in range(1, N + 1)])
+P_xa = np.zeros((N, 3), dtype=np.float128)
+P_xa[:, 2] = 1
 
 P_ux = scipy.linalg.toeplitz(
     np.array(
@@ -102,6 +104,12 @@ P_ua = scipy.linalg.toeplitz(
 
 
 def calc_z_ref() -> np.ndarray:
+    """
+    Calculate the reference CoP trajecotry given the bounds.
+
+    Return:
+        (numpy.ndarray): array with the same size as T / DT + N
+    """
     z_ref = (Z_MAX + Z_MIN) / 2
     if "-sw" in sys.argv:
         z_ref = np.convolve(z_ref, np.ones(20)/20, mode="valid")
@@ -143,6 +151,17 @@ def calc_z_ref() -> np.ndarray:
 
 
 def analytical_solution():
+    """
+    The analytical solution of robot walking following a reference CoP trajectory which is
+    constructed based on the hard coded boundaries (in real application these depend on
+    the robot).
+
+    Return:
+        (numpy.ndarray): reference CoP trajecotry used
+        (list): all centers of mass throughout the episode (length T / DT)
+        (list): all centers of pressure throughout the episode (length T / DT)
+        (list): all control values (jerks) throughout the episode (length T / DT)
+    """
     z_ref = calc_z_ref()
     x_k = x_0
     z_cop = []
@@ -164,6 +183,19 @@ def analytical_solution():
 
 
 def qp_solution():
+    """
+    The QP solution to the biped walking problem minimizes the jerks applied to the robot
+    and holds the constraints for the CoP boundary values. Different options are impleme-
+    nted here like minimizing w.r.t. a reference path, minimizing the CoM and applying
+    terminal constraints on the robot position velocity and acceleration at the end of the
+    episode (or pre-specified time instant)
+
+    Return:
+        (numpy.ndarray): reference CoP trajecotry used
+        (list): all centers of mass throughout the episode (length T / DT)
+        (list): all centers of pressure throughout the episode (length T / DT)
+        (list): all control values (jerks) throughout the episode (length T / DT)
+    """
     z_ref = calc_z_ref()
     x_k = x_0
     z_cop = []
@@ -232,7 +264,9 @@ jerks = np.array(jerks)
 pulse = np.arange(0, T, DT)
 # pulse = np.arange(0, len(jerks))
 
-# plotting
+### PLOTTING ###
+
+# plot a heatmap of jerk values
 norm = plt.Normalize(-1, 1)
 jerk_points = np.array([pulse, jerks * 0 + 0.16]).T.reshape(-1, 1, 2)
 segments = np.concatenate([jerk_points[:-1], jerk_points[1:]], axis=1)
@@ -241,6 +275,7 @@ lc.set_array(jerks)
 ax = plt.gca()
 line = ax.add_collection(lc)
 
+# plot CoP, CoM, boundaries and reference trajectory
 plt.plot(pulse, Z_MAX[:len(pulse)], color='red', linestyle="dashed")
 plt.plot(pulse, Z_MIN[:len(pulse)], color='blue', linestyle="dashed")
 plt.plot(pulse, z_ref[:len(pulse)], color='green', linestyle="dashed")
